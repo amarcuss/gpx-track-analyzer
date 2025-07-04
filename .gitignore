@@ -53,6 +53,8 @@ Thumbs.db
 !CONTRIBUTING.md
 *.gpx
 !example.gpx
+*.csv
+!**/example*.csv
 
 # Logs
 *.log

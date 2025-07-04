@@ -15,6 +15,7 @@ A comprehensive Python script for parsing and analyzing GPX (GPS Exchange Format
 ### Advanced Features
 - **Track Limiting**: Process only the first N tracks for quick analysis
 - **Custom Output Files**: Specify custom output file names
+- **CSV Export**: Export structured track data to CSV files for analysis
 - **Comprehensive Statistics**: Track-by-track analysis plus overall summary
 - **Simultaneous Output**: Console display and file output happen simultaneously
 - **Error Handling**: Graceful handling of missing data and malformed files
@@ -81,8 +82,11 @@ python3 gpx_parser.py --max-tracks=5
 # Save to custom output file
 python3 gpx_parser.py --output=my_analysis.txt
 
+# Export track data to CSV
+python3 gpx_parser.py --csv=tracks.csv
+
 # Combine all options
-python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --output=summary.txt
+python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --output=summary.txt --csv=export.csv
 
 # Show help
 python3 gpx_parser.py --help
@@ -120,6 +124,7 @@ See `example.py` for a complete example of programmatic usage.
 | `filename` | GPX file to process (default: `explore.gpx`) | `python3 gpx_parser.py tracks.gpx` |
 | `--max-tracks=N` | Process only first N tracks | `--max-tracks=5` |
 | `--output=filename` | Custom output file name (default: `track_list.txt`) | `--output=analysis.txt` |
+| `--csv=filename` | Export per-track data to CSV file | `--csv=tracks.csv` |
 | `--help`, `-h` | Show help message and exit | `--help` |
 
 ### Example Output
@@ -164,6 +169,62 @@ Fastest Average Speed: 10.93 km/h
 Slowest Average Speed: 4.59 km/h
 ================================================================================
 ```
+
+## CSV Export
+
+The script can export track data to CSV files for further analysis in spreadsheet applications or other tools. The CSV output includes one row per track with comprehensive data in a structured format.
+
+### CSV Features
+- **Header Row**: Descriptive column names for all data fields
+- **One Row Per Track**: Individual track data without summary statistics
+- **Multiple Units**: Distance and speed data in kilometers, miles, nautical miles, km/h, mph, and knots
+- **Complete Data**: All track information including timestamps, locations, and geographic bounds
+- **UTF-8 Encoding**: Proper handling of international characters in place names
+
+### CSV Columns
+The exported CSV includes the following columns:
+- `Track_Number`: Sequential track number
+- `Track_Name`: Original track name from GPX file
+- `Route_Description`: Start and end locations (e.g., "Seattle, WA - Bainbridge Island, WA")
+- `Start_Location`: Reverse-geocoded start location
+- `End_Location`: Reverse-geocoded end location (if different from start)
+- `Segments`: Number of track segments
+- `Total_Points`: Total number of GPS points
+- `Start_Time`: Track start time (YYYY-MM-DD HH:MM:SS)
+- `End_Time`: Track end time (YYYY-MM-DD HH:MM:SS)
+- `Duration_Hours`: Total track duration in hours
+- `Distance_KM`: Distance in kilometers
+- `Distance_Miles`: Distance in miles
+- `Distance_Nautical_Miles`: Distance in nautical miles
+- `Moving_Time_Hours`: Moving time (excluding stationary periods) in hours
+- `Average_Speed_KMH`: Average moving speed in km/h
+- `Average_Speed_MPH`: Average moving speed in mph
+- `Average_Speed_Knots`: Average moving speed in knots
+- `Min_Latitude`: Minimum latitude coordinate
+- `Max_Latitude`: Maximum latitude coordinate
+- `Min_Longitude`: Minimum longitude coordinate
+- `Max_Longitude`: Maximum longitude coordinate
+
+### CSV Usage Examples
+
+```bash
+# Export all tracks to CSV
+python3 gpx_parser.py my_tracks.gpx --csv=all_tracks.csv
+
+# Export limited tracks to CSV
+python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --csv=first_10_tracks.csv
+
+# Generate both text summary and CSV export
+python3 gpx_parser.py my_tracks.gpx --output=summary.txt --csv=data.csv
+```
+
+### CSV Import
+The generated CSV files can be imported into:
+- **Excel**: Open directly or use Data > From Text/CSV
+- **Google Sheets**: File > Import > Upload > Select file
+- **LibreOffice Calc**: File > Open > Select file type as CSV
+- **Python/Pandas**: `pd.read_csv('tracks.csv')`
+- **R**: `read.csv('tracks.csv')`
 
 ## Technical Details
 

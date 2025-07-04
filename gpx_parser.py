@@ -17,13 +17,14 @@ Features:
 - Distance calculations using haversine formula
 - Multiple unit support: kilometers, miles, nautical miles, km/h, mph, knots
 - Command-line options to limit processing to first N tracks
+- CSV export for structured data analysis
 - Detailed console output and text file summary
 
 Requirements:
 - geopy library for reverse geocoding
 
 Usage:
-    python3 gpx_parser.py [filename] [--max-tracks=N] [--output=filename] [--help]
+    python3 gpx_parser.py [filename] [--max-tracks=N] [--output=filename] [--csv=filename] [--help]
     
 Examples:
     python3 gpx_parser.py                    # Process all tracks in explore.gpx
@@ -31,7 +32,8 @@ Examples:
     python3 gpx_parser.py myfile.gpx         # Process all tracks in myfile.gpx
     python3 gpx_parser.py myfile.gpx --max-tracks=10  # Process first 10 tracks
     python3 gpx_parser.py --output=my_tracks.txt      # Save to custom file name
-    python3 gpx_parser.py myfile.gpx --max-tracks=5 --output=summary.txt  # All options
+    python3 gpx_parser.py --csv=tracks.csv   # Export to CSV file
+    python3 gpx_parser.py myfile.gpx --max-tracks=5 --output=summary.txt --csv=export.csv  # All options
     python3 gpx_parser.py --help             # Show help message
 """
 
@@ -40,6 +42,7 @@ import sys
 from datetime import datetime
 import math
 import time
+import csv
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
@@ -551,6 +554,123 @@ def print_track_summary(tracks, output_file_handle=None):
     write_line()  # Add final newline for better formatting
 
 
+def export_tracks_to_csv(tracks, csv_filename):
+    """
+    Export track data to a CSV file.
+    
+    Args:
+        tracks (list): List of track dictionaries
+        csv_filename (str): Path to the output CSV file
+    """
+    if not tracks:
+        print("No tracks to export to CSV.")
+        return
+    
+    # Define CSV headers
+    headers = [
+        'Track_Number',
+        'Track_Name',
+        'Route_Description',
+        'Start_Location',
+        'End_Location',
+        'Segments',
+        'Total_Points',
+        'Start_Time',
+        'End_Time',
+        'Duration_Hours',
+        'Distance_KM',
+        'Distance_Miles',
+        'Distance_Nautical_Miles',
+        'Moving_Time_Hours',
+        'Average_Speed_KMH',
+        'Average_Speed_MPH',
+        'Average_Speed_Knots',
+        'Min_Latitude',
+        'Max_Latitude',
+        'Min_Longitude',
+        'Max_Longitude'
+    ]
+    
+    try:
+        with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Write header row
+            writer.writerow(headers)
+            
+            # Write data rows
+            for track in tracks:
+                # Calculate duration in hours
+                duration_hours = 0
+                if track['first_time'] and track['last_time']:
+                    duration = track['last_time'] - track['first_time']
+                    duration_hours = duration.total_seconds() / 3600
+                
+                # Get speed stats
+                speed_stats = track['speed_stats']
+                
+                # Format times
+                start_time = track['first_time'].strftime('%Y-%m-%d %H:%M:%S') if track['first_time'] else ''
+                end_time = track['last_time'].strftime('%Y-%m-%d %H:%M:%S') if track['last_time'] else ''
+                
+                # Prepare row data
+                row = [
+                    track['index'],
+                    track['name'],
+                    track['route_name'],
+                    track['start_location']['place'],
+                    track['end_location']['place'] if track['end_location']['place'] != track['start_location']['place'] else '',
+                    track['num_segments'],
+                    track['total_points'],
+                    start_time,
+                    end_time,
+                    round(duration_hours, 2) if duration_hours > 0 else '',
+                    round(speed_stats.get('total_distance_km', 0), 2),
+                    round(speed_stats.get('total_distance_miles', 0), 2),
+                    round(speed_stats.get('total_distance_nautical_miles', 0), 2),
+                    round(speed_stats.get('moving_time_hours', 0), 2),
+                    round(speed_stats.get('avg_speed_kmh', 0), 2),
+                    round(speed_stats.get('avg_speed_mph', 0), 2),
+                    round(speed_stats.get('avg_speed_knots', 0), 2),
+                    round(track['bounds']['min_lat'], 6) if track['bounds']['min_lat'] is not None else '',
+                    round(track['bounds']['max_lat'], 6) if track['bounds']['max_lat'] is not None else '',
+                    round(track['bounds']['min_lon'], 6) if track['bounds']['min_lon'] is not None else '',
+                    round(track['bounds']['max_lon'], 6) if track['bounds']['max_lon'] is not None else ''
+                ]
+                
+                writer.writerow(row)
+        
+        print(f"CSV data exported to: {csv_filename}")
+        
+    except Exception as e:
+        print(f"Error writing CSV file: {e}")
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    import argparse
+    parser = argparse.ArgumentParser(
+        description='Parse GPX files and extract track information with reverse geocoding.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''Examples:
+  %(prog)s explore.gpx
+  %(prog)s explore.gpx --max-tracks 3
+  %(prog)s explore.gpx --output my_tracks.txt
+  %(prog)s explore.gpx --csv tracks.csv
+  %(prog)s explore.gpx --max-tracks 5 --output summary.txt --csv export.csv'''
+    )
+    
+    parser.add_argument('gpx_file', help='GPX file to parse')
+    parser.add_argument('--max-tracks', type=int, metavar='N', 
+                       help='Maximum number of tracks to process')
+    parser.add_argument('--output', metavar='FILE', default='track_list.txt',
+                       help='Output file name (default: track_list.txt)')
+    parser.add_argument('--csv', metavar='FILE',
+                       help='Export per-track data to CSV file')
+    
+    return parser.parse_args()
+
+
 def main():
     """
     Main function to run the GPX parser.
@@ -559,58 +679,56 @@ def main():
     default_file = "explore.gpx"
     
     # Parse command line arguments
-    file_path = default_file
-    max_tracks = None
-    output_file = "track_list.txt"
-    show_help = False
+    args = parse_arguments()
     
-    if len(sys.argv) > 1:
-        for i, arg in enumerate(sys.argv[1:], 1):
-            if arg.startswith('--max-tracks='):
-                max_tracks = int(arg.split('=')[1])
-            elif arg.startswith('--output='):
-                output_file = arg.split('=')[1]
-            elif arg in ['--help', '-h']:
-                show_help = True
-            elif not arg.startswith('--'):
-                file_path = arg
+    file_path = args.gpx_file if args.gpx_file != '-' else default_file
+    max_tracks = args.max_tracks
+    output_file = args.output
+    csv_file = args.csv
     
-    # Show help if requested
-    if show_help:
-        print("GPX Track Analyzer - Parse and analyze GPX files with detailed statistics")
-        print("\nUsage:")
-        print("  python3 gpx_parser.py [filename] [--max-tracks=N] [--output=filename]")
-        print("\nArguments:")
-        print("  filename              GPX file to process (default: explore.gpx)")
-        print("  --max-tracks=N        Process only first N tracks")
-        print("  --output=filename     Custom output file name (default: track_list.txt)")
-        print("  --help, -h            Show this help message")
-        print("\nExamples:")
-        print("  python3 gpx_parser.py                    # Process all tracks in explore.gpx")
-        print("  python3 gpx_parser.py --max-tracks=5     # Process first 5 tracks only")
-        print("  python3 gpx_parser.py myfile.gpx         # Process all tracks in myfile.gpx")
-        print("  python3 gpx_parser.py myfile.gpx --max-tracks=10  # Process first 10 tracks in myfile.gpx")
-        print("  python3 gpx_parser.py --output=my_tracks.txt      # Save to custom file name")
-        print("  python3 gpx_parser.py myfile.gpx --max-tracks=5 --output=summary.txt  # All options")
+    if file_path == default_file or file_path.endswith('.gpx'):
+        print(f"Parsing GPX file: {file_path}")
+    else:
+        print(f"Error: Invalid GPX file specified: {file_path}")
         return
     
-    print(f"Parsing GPX file: {file_path}")
     if max_tracks:
         print(f"Processing only first {max_tracks} tracks")
     
-    # Parse the GPX file
-    tracks = parse_gpx_file(file_path, max_tracks)
-    
-    # Print the summary and save to file simultaneously
-    if tracks:
-        with open(output_file, 'w') as f:
-            f.write("GPX Track Summary\n")
-            f.write("=" * 80 + "\n")
+    try:
+        # Parse the GPX file
+        tracks = parse_gpx_file(file_path, max_tracks)
+        
+        if not tracks:
+            print("No tracks found in the GPX file.")
+            return
+        
+        # Write output to file and console simultaneously
+        with open(output_file, 'w', encoding='utf-8') as f:
+            # Write header
+            header = f"GPX Track Analysis - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            header += f"Source file: {file_path}\n"
+            print(header, end='')
+            f.write(header)
+            
+            # Print track summary (using existing function)
             print_track_summary(tracks, f)
         
-        print(f"\nTrack list saved to: {output_file}")
-    else:
-        print_track_summary(tracks)
+        print(f"\nTrack information written to '{output_file}'")
+        
+        # Export to CSV if requested
+        if csv_file:
+            export_tracks_to_csv(tracks, csv_file)
+    
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        sys.exit(1)
+    except ET.ParseError as e:
+        print(f"Error parsing GPX file: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
