@@ -55,6 +55,8 @@ Thumbs.db
 !example.gpx
 *.csv
 !**/example*.csv
+*.html
+*.xlsx
 
 # Logs
 *.log

@@ -19,12 +19,13 @@ Features:
 - Command-line options to limit processing to first N tracks
 - CSV export for structured data analysis
 - Detailed console output and text file summary
+- HTML visualization export for animated track visualizations
 
 Requirements:
 - geopy library for reverse geocoding
 
 Usage:
-    python3 gpx_parser.py [filename] [--max-tracks=N] [--output=filename] [--csv=filename] [--help]
+    python3 gpx_parser.py [filename] [--max-tracks=N] [--output=filename] [--csv=filename] [--html=filename] [--help]
     
 Examples:
     python3 gpx_parser.py                    # Process all tracks in explore.gpx
@@ -33,7 +34,8 @@ Examples:
     python3 gpx_parser.py myfile.gpx --max-tracks=10  # Process first 10 tracks
     python3 gpx_parser.py --output=my_tracks.txt      # Save to custom file name
     python3 gpx_parser.py --csv=tracks.csv   # Export to CSV file
-    python3 gpx_parser.py myfile.gpx --max-tracks=5 --output=summary.txt --csv=export.csv  # All options
+    python3 gpx_parser.py --html=viz.html    # Export to HTML visualization
+    python3 gpx_parser.py myfile.gpx --max-tracks=5 --output=summary.txt --csv=export.csv --html=viz.html  # All options
     python3 gpx_parser.py --help             # Show help message
 """
 
@@ -646,6 +648,750 @@ def export_tracks_to_csv(tracks, csv_filename):
         print(f"Error writing CSV file: {e}")
 
 
+def export_tracks_to_html_visualization(tracks, html_filename, gpx_file_path):
+    """
+    Export track data to an interactive HTML visualization with point-by-point animation.
+    
+    Args:
+        tracks (list): List of track dictionaries
+        html_filename (str): Path to the output HTML file
+        gpx_file_path (str): Path to the original GPX file for detailed point extraction
+    """
+    if not tracks:
+        print("No tracks to export to HTML visualization.")
+        return
+    
+    # Calculate track data for visualization with all GPS points
+    track_data = []
+    
+    # Re-parse the GPX file to get all detailed points
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(gpx_file_path)
+        root = tree.getroot()
+        
+        # Handle namespace
+        namespace = {'gpx': 'http://www.topografix.com/GPX/1/1'}
+        if root.tag.startswith('{'):
+            ns_uri = root.tag.split('}')[0][1:]
+            namespace = {'gpx': ns_uri}
+        
+        track_elements = root.findall('.//gpx:trk', namespace)
+        
+        for track_idx, (track, track_elem) in enumerate(zip(tracks, track_elements)):
+            try:
+                # Extract all GPS points for this track
+                points_data = extract_detailed_track_points(gpx_file_path, track_elem, namespace)
+                
+                if points_data and len(points_data) > 1:
+                    # Convert to relative coordinates for animation
+                    relative_points = []
+                    if points_data:
+                        # Calculate relative movements from the first point
+                        first_lat = points_data[0]['lat']
+                        first_lon = points_data[0]['lon']
+                        
+                        for point in points_data:
+                            # Calculate relative displacement in degrees
+                            relative_lat = point['lat'] - first_lat
+                            relative_lon = point['lon'] - first_lon
+                            
+                            # Convert to approximate distances (rough approximation)
+                            # 1 degree latitude ≈ 111 km, longitude varies by latitude
+                            lat_km = relative_lat * 111
+                            lon_km = relative_lon * 111 * abs(math.cos(math.radians(first_lat)))
+                            
+                            relative_points.append({
+                                'lat': point['lat'],
+                                'lon': point['lon'],
+                                'relative_lat_km': lat_km,
+                                'relative_lon_km': lon_km,
+                                'time': point['time'].isoformat() if point['time'] else None
+                            })
+                    
+                    track_data.append({
+                        'index': track['index'],
+                        'name': track['name'],
+                        'route_name': track['route_name'],
+                        'points': relative_points,
+                        'total_distance': track['speed_stats'].get('total_distance_km', 0),
+                        'avg_speed': track['speed_stats'].get('avg_speed_kmh', 0),
+                        'duration': (track['last_time'] - track['first_time']).total_seconds() / 3600 if track['first_time'] and track['last_time'] else 0
+                    })
+            except Exception as e:
+                print(f"Warning: Could not process track {track['index']} for visualization: {e}")
+                continue
+    except Exception as e:
+        print(f"Warning: Could not re-parse GPX file for visualization: {e}")
+        return
+    
+    # Generate HTML content
+    html_content = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPX Track Visualization</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+        }}
+        
+        .header {{
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        
+        .header h1 {{
+            margin: 0;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }}
+        
+        .header p {{
+            margin: 10px 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }}
+        
+        .controls {{
+            text-align: center;
+            margin-bottom: 30px;
+        }}
+        
+        .controls button {{
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }}
+        
+        .controls button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }}
+        
+        .controls button:disabled {{
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }}
+        
+        .controls label {{
+            margin-left: 20px;
+            font-weight: bold;
+        }}
+        
+        .controls input[type="range"] {{
+            margin-left: 10px;
+            width: 150px;
+        }}
+        
+        .canvas-container {{
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }}
+        
+        #trackCanvas {{
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+            display: block;
+            margin: 0 auto;
+            cursor: crosshair;
+        }}
+        
+        .tooltip {{
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 300px;
+            display: none;
+        }}
+        
+        .tooltip h4 {{
+            margin: 0 0 8px 0;
+            color: #ff6b6b;
+            font-size: 1em;
+        }}
+        
+        .tooltip p {{
+            margin: 4px 0;
+            line-height: 1.3;
+        }}
+        
+        .track-info {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }}
+        
+        .track-item {{
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid;
+            backdrop-filter: blur(5px);
+        }}
+        
+        .track-item h3 {{
+            margin: 0 0 10px 0;
+            font-size: 1.1em;
+        }}
+        
+        .track-item p {{
+            margin: 5px 0;
+            opacity: 0.9;
+            font-size: 0.9em;
+        }}
+        
+        .stats {{
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }}
+        
+        .stats h2 {{
+            margin: 0 0 20px 0;
+        }}
+        
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }}
+        
+        .stat-item {{
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }}
+        
+        .stat-value {{
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }}
+        
+        .stat-label {{
+            opacity: 0.8;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🗺️ GPX Track Visualization</h1>
+        <p>Interactive visualization of {len(tracks)} GPS tracks</p>
+        <p>All tracks start from the center and radiate outward showing relative movement patterns</p>
+    </div>
+    
+    <div class="controls">
+        <button id="startBtn">▶️ Start Animation</button>
+        <button id="pauseBtn" disabled>⏸️ Pause</button>
+        <button id="resetBtn">🔄 Reset</button>
+        <label for="speedSlider">Speed:</label>
+        <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="0.5">
+        <span id="speedValue">0.5x</span>
+    </div>
+    
+    <div class="canvas-container">
+        <canvas id="trackCanvas" width="1200" height="800"></canvas>
+        <div id="tooltip" class="tooltip"></div>
+    </div>
+    
+    <div class="track-info" id="trackInfo">
+        <!-- Track information will be populated by JavaScript -->
+    </div>
+    
+    <div class="stats">
+        <h2>📊 Summary Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-value">{len(tracks)}</span>
+                <span class="stat-label">Total Tracks</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{sum(t['speed_stats'].get('total_distance_km', 0) for t in tracks):.1f} km</span>
+                <span class="stat-label">Total Distance</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{sum(t['speed_stats'].get('moving_time_hours', 0) for t in tracks):.1f} hrs</span>
+                <span class="stat-label">Total Moving Time</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{(sum(t['speed_stats'].get('total_distance_km', 0) for t in tracks) / max(sum(t['speed_stats'].get('moving_time_hours', 0) for t in tracks), 1)):.1f} km/h</span>
+                <span class="stat-label">Average Speed</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Track data from Python
+        const trackData = {repr(track_data)};
+        
+        // Canvas setup
+        const canvas = document.getElementById('trackCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Animation state
+        let isAnimating = false;
+        let animationSpeed = 0.5;
+        let currentFrame = 0;
+        let animationId = null;
+        
+        // Mouse tracking for tooltips
+        let mouseX = 0;
+        let mouseY = 0;
+        let hoveredTrack = null;
+        let trackPaths = []; // Store track path data for hit detection
+        
+        // Visualization settings
+        const TRACK_HEIGHT = 30;
+        const TRACK_SPACING = 40;
+        const CANVAS_PADDING = 50;
+        const POINT_SPACING = 3;
+        
+        // Color palette for tracks
+        const colors = [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57',
+            '#ff9ff3', '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43',
+            '#10ac84', '#ee5253', '#0abde3', '#3742fa', '#2f3542'
+        ];
+        
+        // Control event listeners
+        document.getElementById('startBtn').addEventListener('click', startAnimation);
+        document.getElementById('pauseBtn').addEventListener('click', pauseAnimation);
+        document.getElementById('resetBtn').addEventListener('click', resetAnimation);
+        document.getElementById('speedSlider').addEventListener('input', updateSpeed);
+        
+        // Mouse event listeners for tooltips
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseleave', handleMouseLeave);
+        
+        function updateSpeed(e) {{
+            animationSpeed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = animationSpeed + 'x';
+        }}
+        
+        function handleMouseMove(e) {{
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+            
+            // Check if mouse is over any track
+            const newHoveredTrack = getTrackAtPosition(mouseX, mouseY);
+            
+            if (newHoveredTrack !== hoveredTrack) {{
+                hoveredTrack = newHoveredTrack;
+                updateTooltip(e.clientX, e.clientY);
+            }}
+        }}
+        
+        function handleMouseLeave() {{
+            hoveredTrack = null;
+            hideTooltip();
+        }}
+        
+        function getTrackAtPosition(x, y) {{
+            const tolerance = 8; // Pixels tolerance for hit detection
+            
+            for (let trackIndex = 0; trackIndex < trackPaths.length; trackIndex++) {{
+                const path = trackPaths[trackIndex];
+                if (!path || path.length < 2) continue;
+                
+                for (let i = 1; i < path.length; i++) {{
+                    const p1 = path[i - 1];
+                    const p2 = path[i];
+                    
+                    if (distanceToLineSegment(x, y, p1.x, p1.y, p2.x, p2.y) < tolerance) {{
+                        return trackIndex;
+                    }}
+                }}
+            }}
+            return null;
+        }}
+        
+        function distanceToLineSegment(px, py, x1, y1, x2, y2) {{
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            if (length === 0) {{
+                return Math.sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+            }}
+            
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (length * length)));
+            const projection = {{
+                x: x1 + t * dx,
+                y: y1 + t * dy
+            }};
+            
+            return Math.sqrt((px - projection.x) * (px - projection.x) + (py - projection.y) * (py - projection.y));
+        }}
+        
+        function updateTooltip(clientX, clientY) {{
+            const tooltip = document.getElementById('tooltip');
+            
+            if (hoveredTrack !== null && hoveredTrack < trackData.length) {{
+                const track = trackData[hoveredTrack];
+                const color = colors[hoveredTrack % colors.length];
+                
+                tooltip.innerHTML = `
+                    <h4 style="color: ${{color}}">Track ${{track.index}}: ${{track.name}}</h4>
+                    <p><strong>Route:</strong> ${{track.route_name}}</p>
+                    <p><strong>Distance:</strong> ${{track.total_distance.toFixed(2)}} km</p>
+                    <p><strong>Average Speed:</strong> ${{track.avg_speed.toFixed(1)}} km/h</p>
+                    <p><strong>Duration:</strong> ${{track.duration.toFixed(1)}} hours</p>
+                    <p><strong>Points:</strong> ${{track.points.length}}</p>
+                `;
+                
+                // Position tooltip near mouse but keep it on screen
+                const tooltipRect = tooltip.getBoundingClientRect();
+                let left = clientX + 10;
+                let top = clientY - 10;
+                
+                // Adjust if tooltip would go off screen
+                if (left + 300 > window.innerWidth) {{
+                    left = clientX - 310;
+                }}
+                if (top < 10) {{
+                    top = clientY + 20;
+                }}
+                
+                tooltip.style.left = left + 'px';
+                tooltip.style.top = top + 'px';
+                tooltip.style.display = 'block';
+            }} else {{
+                hideTooltip();
+            }}
+        }}
+        
+        function hideTooltip() {{
+            document.getElementById('tooltip').style.display = 'none';
+        }}
+        
+        function startAnimation() {{
+            isAnimating = true;
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('pauseBtn').disabled = false;
+            animate();
+        }}
+        
+        function pauseAnimation() {{
+            isAnimating = false;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            if (animationId) {{
+                clearTimeout(animationId);  // Use clearTimeout instead of cancelAnimationFrame
+            }}
+        }}
+        
+        function resetAnimation() {{
+            isAnimating = false;
+            currentFrame = 0;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('pauseBtn').disabled = true;
+            if (animationId) {{
+                clearTimeout(animationId);  // Use clearTimeout instead of cancelAnimationFrame
+            }}
+            
+            // Clear the canvas completely
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Redraw the background and center point
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw center point
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+            ctx.fill();
+        }}
+        
+        function drawTracks() {{
+            // Clear canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Reset track paths for hit detection
+            trackPaths = [];
+            
+            // Calculate canvas center
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // Find the maximum extent for dynamic scaling
+            let maxExtent = 0;
+            
+            trackData.forEach(track => {{
+                if (track.points && track.points.length > 0) {{
+                    // Show points based on current frame (now 1:1 with actual points)
+                    const pointsToShow = Math.min(currentFrame, track.points.length);
+                    
+                    for (let i = 0; i < pointsToShow; i++) {{
+                        const point = track.points[i];
+                        const distance = Math.sqrt(
+                            Math.pow(point.relative_lat_km, 2) + 
+                            Math.pow(point.relative_lon_km, 2)
+                        );
+                        maxExtent = Math.max(maxExtent, distance);
+                    }}
+                }}
+            }});
+            
+            // Calculate scale to fit all tracks with padding
+            const availableSize = Math.min(canvas.width, canvas.height) - 2 * CANVAS_PADDING;
+            const scale = maxExtent > 0 ? availableSize / (maxExtent * 2.2) : 1;
+            
+            // Draw center point
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw each track starting from center
+            trackData.forEach((track, trackIndex) => {{
+                if (!track.points || track.points.length === 0) {{
+                    trackPaths[trackIndex] = [];
+                    return;
+                }}
+                
+                const color = colors[trackIndex % colors.length];
+                
+                // Calculate how many points to show based on current frame
+                const pointsToShow = Math.min(currentFrame, track.points.length);
+                
+                // Initialize path storage for this track
+                trackPaths[trackIndex] = [];
+                
+                if (pointsToShow > 0) {{
+                    // Set drawing style
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.globalAlpha = 0.8;
+                    
+                    // Starting position (center of canvas)
+                    let currentX = centerX;
+                    let currentY = centerY;
+                    
+                    // Store starting point for hit detection
+                    trackPaths[trackIndex].push({{x: currentX, y: currentY}});
+                    
+                    // Draw start point
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 1;
+                    ctx.beginPath();
+                    ctx.arc(currentX, currentY, 3, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // Draw path segments
+                    ctx.globalAlpha = 0.8;
+                    for (let i = 1; i < pointsToShow; i++) {{
+                        const point = track.points[i];
+                        const prevPoint = track.points[i-1];
+                        
+                        // Calculate relative movement from previous point
+                        const deltaLat = point.relative_lat_km - prevPoint.relative_lat_km;
+                        const deltaLon = point.relative_lon_km - prevPoint.relative_lon_km;
+                        
+                        // Scale and apply to canvas coordinates
+                        const deltaX = deltaLon * scale;
+                        const deltaY = -deltaLat * scale; // Negative because canvas Y increases downward
+                        
+                        const newX = currentX + deltaX;
+                        const newY = currentY + deltaY;
+                        
+                        // Store point for hit detection
+                        trackPaths[trackIndex].push({{x: newX, y: newY}});
+                        
+                        // Draw line to new position
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(currentX, currentY);
+                        ctx.lineTo(newX, newY);
+                        ctx.stroke();
+                        
+                        // Draw small point
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = 0.6;
+                        ctx.beginPath();
+                        ctx.arc(newX, newY, 1, 0, 2 * Math.PI);
+                        ctx.fill();
+                        
+                        currentX = newX;
+                        currentY = newY;
+                    }}
+                    
+                    // Draw current position with larger dot if animation is active
+                    if (pointsToShow > 0 && pointsToShow < track.points.length) {{
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = 1;
+                        ctx.beginPath();
+                        ctx.arc(currentX, currentY, 5, 0, 2 * Math.PI);
+                        ctx.fill();
+                        
+                        // Add a glow effect
+                        ctx.shadowColor = color;
+                        ctx.shadowBlur = 10;
+                        ctx.beginPath();
+                        ctx.arc(currentX, currentY, 3, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }}
+                    
+                    ctx.globalAlpha = 1;
+                }}
+            }});
+            
+            // Draw scale indicator
+            if (maxExtent > 0) {{
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`Scale: 1 pixel = ${{(1/scale).toFixed(2)}} km`, 10, canvas.height - 10);
+            }}
+        }}
+        
+        function animate() {{
+            if (!isAnimating) return;
+            
+            currentFrame += 1;  // Always increment by 1 for smoother control
+            drawTracks();
+            
+            // Check if animation is complete
+            const maxFrames = Math.max(...trackData.map(track => track.points ? track.points.length : 0));
+            if (currentFrame >= maxFrames) {{
+                pauseAnimation();
+                return;
+            }}
+            
+            // Use setTimeout with speed-controlled delay instead of requestAnimationFrame
+            const delay = Math.max(10, 1000 / (animationSpeed * 60));  // Convert speed to milliseconds delay
+            animationId = setTimeout(animate, delay);
+        }}
+        
+        // Initialize track info
+        function initializeTrackInfo() {{
+            const trackInfoContainer = document.getElementById('trackInfo');
+            
+            trackData.forEach((track, index) => {{
+                const trackItem = document.createElement('div');
+                trackItem.className = 'track-item';
+                trackItem.style.borderLeftColor = colors[index % colors.length];
+                
+                trackItem.innerHTML = `
+                    <h3>Track ${{track.index}}: ${{track.name}}</h3>
+                    <p><strong>Route:</strong> ${{track.route_name}}</p>
+                    <p><strong>Distance:</strong> ${{track.total_distance.toFixed(2)}} km</p>
+                    <p><strong>Average Speed:</strong> ${{track.avg_speed.toFixed(1)}} km/h</p>
+                    <p><strong>Duration:</strong> ${{track.duration.toFixed(1)}} hours</p>
+                `;
+                
+                trackInfoContainer.appendChild(trackItem);
+            }});
+        }}
+        
+        // Initialize visualization
+        drawTracks();
+        initializeTrackInfo();
+        
+        // Resize canvas on window resize
+        window.addEventListener('resize', () => {{
+            // Could add responsive canvas resizing here
+        }});
+    </script>
+</body>
+</html>'''
+    
+    try:
+        with open(html_filename, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        print(f"HTML visualization exported to: {html_filename}")
+        
+    except Exception as e:
+        print(f"Error writing HTML visualization file: {e}")
+
+
+def extract_detailed_track_points(file_path, track_element, namespace):
+    """
+    Extract detailed GPS points from a specific track for visualization.
+    
+    Args:
+        file_path (str): Path to the GPX file
+        track_element: XML track element
+        namespace: XML namespace dictionary
+        
+    Returns:
+        list: List of GPS points with lat, lon, time
+    """
+    points = []
+    
+    try:
+        segments = track_element.findall('gpx:trkseg', namespace)
+        
+        for segment in segments:
+            track_points = segment.findall('gpx:trkpt', namespace)
+            
+            for point in track_points:
+                lat = float(point.get('lat', 0))
+                lon = float(point.get('lon', 0))
+                
+                time_elem = point.find('gpx:time', namespace)
+                point_time = None
+                
+                if time_elem is not None and time_elem.text:
+                    try:
+                        point_time = datetime.fromisoformat(time_elem.text.replace('Z', '+00:00'))
+                    except ValueError:
+                        pass
+                
+                points.append({
+                    'lat': lat,
+                    'lon': lon,
+                    'time': point_time
+                })
+    
+    except Exception as e:
+        print(f"Warning: Could not extract detailed points: {e}")
+    
+    return points
+
+
 def parse_arguments():
     """Parse command line arguments."""
     import argparse
@@ -657,7 +1403,8 @@ def parse_arguments():
   %(prog)s explore.gpx --max-tracks 3
   %(prog)s explore.gpx --output my_tracks.txt
   %(prog)s explore.gpx --csv tracks.csv
-  %(prog)s explore.gpx --max-tracks 5 --output summary.txt --csv export.csv'''
+  %(prog)s explore.gpx --html visualization.html
+  %(prog)s explore.gpx --max-tracks 5 --output summary.txt --csv export.csv --html viz.html'''
     )
     
     parser.add_argument('gpx_file', help='GPX file to parse')
@@ -667,6 +1414,8 @@ def parse_arguments():
                        help='Output file name (default: track_list.txt)')
     parser.add_argument('--csv', metavar='FILE',
                        help='Export per-track data to CSV file')
+    parser.add_argument('--html', metavar='FILE',
+                       help='Export interactive HTML visualization')
     
     return parser.parse_args()
 
@@ -685,6 +1434,7 @@ def main():
     max_tracks = args.max_tracks
     output_file = args.output
     csv_file = args.csv
+    html_file = args.html
     
     if file_path == default_file or file_path.endswith('.gpx'):
         print(f"Parsing GPX file: {file_path}")
@@ -719,6 +1469,13 @@ def main():
         # Export to CSV if requested
         if csv_file:
             export_tracks_to_csv(tracks, csv_file)
+        
+        # Export to HTML visualization if requested
+        if html_file:
+            export_tracks_to_html_visualization(tracks, html_file, file_path)
+        elif not csv_file:  # Auto-generate HTML visualization if no specific output requested
+            auto_html_file = output_file.replace('.txt', '_visualization.html')
+            export_tracks_to_html_visualization(tracks, auto_html_file, file_path)
     
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found.")

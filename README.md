@@ -16,6 +16,7 @@ A comprehensive Python script for parsing and analyzing GPX (GPS Exchange Format
 - **Track Limiting**: Process only the first N tracks for quick analysis
 - **Custom Output Files**: Specify custom output file names
 - **CSV Export**: Export structured track data to CSV files for analysis
+- **HTML Visualization**: Generate interactive animated visualizations with point-by-point track drawing, speed controls, and mouseover tooltips for detailed track inspection
 - **Comprehensive Statistics**: Track-by-track analysis plus overall summary
 - **Simultaneous Output**: Console display and file output happen simultaneously
 - **Error Handling**: Graceful handling of missing data and malformed files
@@ -85,8 +86,11 @@ python3 gpx_parser.py --output=my_analysis.txt
 # Export track data to CSV
 python3 gpx_parser.py --csv=tracks.csv
 
+# Generate interactive HTML visualization
+python3 gpx_parser.py --html=visualization.html
+
 # Combine all options
-python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --output=summary.txt --csv=export.csv
+python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --output=summary.txt --csv=export.csv --html=viz.html
 
 # Show help
 python3 gpx_parser.py --help
@@ -125,6 +129,7 @@ See `example.py` for a complete example of programmatic usage.
 | `--max-tracks=N` | Process only first N tracks | `--max-tracks=5` |
 | `--output=filename` | Custom output file name (default: `track_list.txt`) | `--output=analysis.txt` |
 | `--csv=filename` | Export per-track data to CSV file | `--csv=tracks.csv` |
+| `--html=filename` | Generate interactive HTML visualization | `--html=visualization.html` |
 | `--help`, `-h` | Show help message and exit | `--help` |
 
 ### Example Output
@@ -225,6 +230,80 @@ The generated CSV files can be imported into:
 - **LibreOffice Calc**: File > Open > Select file type as CSV
 - **Python/Pandas**: `pd.read_csv('tracks.csv')`
 - **R**: `read.csv('tracks.csv')`
+
+## HTML Visualization
+
+The script can generate interactive HTML visualizations that show animated, point-by-point track drawings. This feature creates a unique view of your GPS data by displaying each track's shape and movement patterns relative to their starting points.
+
+### Visualization Features
+- **Point-by-Point Animation**: Each track draws itself out progressively, showing the exact path taken
+- **Relative Positioning**: Tracks are positioned relative to their starting points, emphasizing shape over geography
+- **Interactive Controls**: Play, pause, reset, and speed controls for the animation
+- **Color-Coded Tracks**: Each track gets a unique color for easy identification
+- **Track Information**: Displays track names, distances, speeds, and point counts
+- **Interactive Tooltips**: Hover over any track to see detailed information including name, route, distance, speed, duration, and point count
+- **Responsive Design**: Works on desktop and mobile devices
+- **Modern UI**: Beautiful gradient backgrounds and smooth animations
+
+### How It Works
+The visualization converts GPS coordinates into relative movements:
+1. **Starting Point**: Each track starts from the center of its allocated space
+2. **Relative Movement**: Each subsequent point is positioned relative to the previous point
+3. **Scaling**: All tracks are scaled to fit within the visualization area
+4. **Animation**: Points are drawn progressively to show the track development over time
+
+### Visualization Usage
+
+```bash
+# Generate HTML visualization for all tracks
+python3 gpx_parser.py my_tracks.gpx --html=tracks.html
+
+# Generate visualization for first 10 tracks
+python3 gpx_parser.py my_tracks.gpx --max-tracks=10 --html=viz.html
+
+# Generate both text analysis and visualization
+python3 gpx_parser.py my_tracks.gpx --output=analysis.txt --html=visualization.html
+
+# Generate all outputs (text, CSV, HTML)
+python3 gpx_parser.py my_tracks.gpx --output=analysis.txt --csv=data.csv --html=viz.html
+```
+
+### Visualization Controls
+- **▶️ Start Animation**: Begin the point-by-point drawing animation
+- **⏸️ Pause**: Pause the animation at any point
+- **🔄 Reset**: Reset all tracks to their starting positions
+- **Speed Slider**: Adjust animation speed from 0.1x to 3x for precise control
+- **Interactive Inspection**: Hover over any track to see detailed information in a tooltip
+
+### Interactive Features
+The HTML visualization includes several interactive elements:
+
+**Mouse Interaction:**
+- **Hover for Details**: Move your mouse over any track to see a tooltip with:
+  - Track name and route description
+  - Total distance (in km, miles, and nautical miles)
+  - Average speed (in km/h, mph, and knots)
+  - Duration and total points
+- **Visual Feedback**: Tracks highlight when hovered over
+
+**Animation Controls:**
+- **Speed Control**: Fine-tune animation speed with the slider (0.1x to 3x)
+- **Play/Pause**: Start and stop the animation at any time
+- **Reset**: Return all tracks to their starting positions
+
+### Why Use Relative Visualization?
+Traditional GPS visualizations show tracks on maps, but relative visualization offers unique benefits:
+- **Shape Focus**: Emphasizes the actual path taken rather than geographic location
+- **Pattern Recognition**: Makes it easier to spot similar movement patterns
+- **Comparative Analysis**: Shows how different tracks relate to each other in terms of complexity
+- **Animation Appeal**: Creates engaging, animated presentations of GPS data
+
+### Browser Compatibility
+The HTML visualization works in modern web browsers including:
+- Chrome 60+
+- Firefox 55+
+- Safari 10.1+
+- Edge 15+
 
 ## Technical Details
 

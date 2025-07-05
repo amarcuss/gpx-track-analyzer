@@ -13,7 +13,7 @@ Thank you for your interest in contributing to GPX Track Analyzer! This document
 ### Submitting Changes
 1. **Fork the repository**
    - Click the "Fork" button on the GitHub repository page
-   - Clone your fork locally: `git clone https://github.com/yourusername/gpx-track-analyzer.git`
+   - Clone your fork locally: `git clone https://github.com/amarcuss/gpx-track-analyzer.git`
 
 2. **Create a feature branch**
    ```bash
